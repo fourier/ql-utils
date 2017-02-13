@@ -6,7 +6,11 @@
 (defpackage #:ql-utils
   (:use #:cl)
   (:nicknames qlu)
-  (:export bundle-dependencies list-all-dependencies))
+  (:export
+   bundle-dependencies
+   list-all-dependencies
+   search-for
+   info))
 
 (in-package #:ql-utils)
 
@@ -19,13 +23,12 @@
 ;; Implementation
 ;;----------------------------------------------------------------------------
 
-;; The ql:bundle-systems is not aware of local systems
-;; therefore in order to export all systems our local (newly implemented) system
-;; depends on, need to implement the wrapper
-
 (defun bundle-dependencies (system-name to)
   "Export all systems the SYSTEM-NAME depends on to the directory TO using
 ql:bundle-systems. System should be quickloaded before."
+;; The ql:bundle-systems is not aware of local systems
+;; therefore in order to export all systems our local (newly implemented) system
+;; depends on it was needed to implement the wrapper."
   (let ((system (asdf/system:find-system system-name)))
     (unless system
       (error (format nil "System ~a is not found by ASDF" system-name)))
@@ -46,3 +49,20 @@ System should be quickloaded before."
               (pushnew dep stack :test #'equal))
         while stack)
   depends))
+
+
+(defun search-for (some-name)
+  "Wrapper around ql:system-apropos searching for SOME-NAME"
+  (let ((systems (ql-dist:system-apropos-list some-name)))
+    (mapcar #'ql-dist:name systems)))
+
+
+(defun info (system-name)
+  (let ((qdocs (concatenate 'string "http://quickdocs.org/" system-name "/")))
+    (multiple-value-bind (response code)
+        (drakma:http-request qdocs)
+      ;; if the system found 
+      (when (= 200 code)
+        (let ((parsed (html-parse:parse-html response)))
+          ;; html->body->div id "container"->div id "content"
+          (third (second (third (second parsed)))))))))
