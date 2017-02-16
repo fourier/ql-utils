@@ -54,7 +54,12 @@ System should be quickloaded before."
 (defun search-for (some-name)
   "Wrapper around ql:system-apropos searching for SOME-NAME"
   (let ((systems (ql-dist:system-apropos-list some-name)))
-    (mapcar #'ql-dist:name systems)))
+    (mapcar
+     (lambda (system)
+       (let* ((name (ql-dist:name system))
+              (url (get-system-page name)))
+         (format nil "~a~@[ ~a~]" name url)))
+     systems)))
 
 
 (defun info (system-name)
@@ -65,4 +70,30 @@ System should be quickloaded before."
       (when (= 200 code)
         (let ((parsed (html-parse:parse-html response)))
           ;; html->body->div id "container"->div id "content"
-          (third (second (third (second parsed)))))))))
+          ;; :header
+          (assoc :header (third (second (third (second parsed))))))))))
+
+
+(defun get-system-page (system-name)
+  (flet ((link-name (alist)
+           (second alist))
+         (link-url (alist)
+           (third (car alist))))
+  (let ((qdocs (concatenate 'string "http://quickdocs.org/" system-name "/")))
+    (multiple-value-bind (response code)
+        (drakma:http-request qdocs)
+      ;; if the system found 
+      (when (= 200 code)
+        (let* ((parsed (html-parse:parse-html response))
+               ;; html->body->div id "container"->div id "content"
+               ;; :header -> header-links
+               (links (cdr (fourth (assoc :header (third (second (third (second parsed))))))))
+               (website-alist (find-if (lambda (x) (string= (link-name x) "Website")) links))
+               (sourcecode-alist (find-if (lambda (x) (string= (link-name x) "Source Code")) links)))
+          ;; the following heuristics applies:
+          ;; if website button is available, use it
+          ;; if source code button is available (probably leading to github page), use it
+          ;; otherwise use quick docs url
+          (cond (website-alist (link-url website-alist))
+                (sourcecode-alist (link-url sourcecode-alist))
+                (t qdocs))))))))
